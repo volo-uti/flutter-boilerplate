@@ -191,4 +191,17 @@ void main() {
       expect(raw(_ui, 'final w = IconButton(onPressed: null);'), isEmpty);
     });
   });
+
+  group('library gaps', () {
+    test('markers are listed with file and line', () {
+      const text = 'final a = 1;\n  // TODO(library: 4px line) tried style\n';
+      expect(libraryGaps(_ui, text), [
+        '$_ui:2: // TODO(library: 4px line) tried style',
+      ]);
+    });
+
+    test('other comments are ignored', () {
+      expect(libraryGaps(_ui, '// TODO(me): later\n// library\n'), isEmpty);
+    });
+  });
 }

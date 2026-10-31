@@ -8,9 +8,13 @@
 //
 // 3. Reuse: raw Flutter widgets that have an app_ui replacement are rejected
 //    outside app_ui (see [rawWidgets]).
+// 4. Library gaps: `TODO(library: ...)` markers are listed, never failed (see
+//    [libraryGaps]).
 //
 // Rules are generic: new apps and packages are picked up from the folders.
 import 'dart:io';
+
+final _libraryGap = RegExp(r'//\s*TODO\(library:.*');
 
 final _directive = RegExp(r'''^\s*(?:import|export)\s+['"]([^'"]+)['"]''');
 const _impureDart = {'ui', 'io', 'html', 'js', 'js_interop', 'js_util', 'ffi'};
@@ -255,17 +259,28 @@ Set<String> _dirs(String parent) => Directory(parent).existsSync()
       }
     : {};
 
+/// `path:line: TODO(library: ...)` for each marker in [text]: a detail a UI
+/// package could not do and was written by hand until the package gets it.
+List<String> libraryGaps(String path, String text) => [
+  for (final (i, line) in text.split('\n').indexed)
+    if (_libraryGap.firstMatch(line) case final m?)
+      '$path:${i + 1}: ${m.group(0)}',
+];
+
 void main() {
   final apps = _dirs('apps');
   final packages = _dirs('packages');
   final all = <String>[];
+  final gaps = <String>[];
   for (final (parent, names) in [('apps', apps), ('packages', packages)]) {
     for (final n in names) {
       final lib = Directory('$parent/$n/lib');
       if (!lib.existsSync()) continue;
       for (final f in lib.listSync(recursive: true).whereType<File>()) {
         if (f.path.endsWith('.dart')) {
-          all.addAll(violations(f.path, f.readAsStringSync(), apps, packages));
+          final text = f.readAsStringSync();
+          all.addAll(violations(f.path, text, apps, packages));
+          gaps.addAll(libraryGaps(f.path, text));
         }
       }
     }
@@ -287,4 +302,8 @@ void main() {
   stdout.writeln(
     'Architecture OK (${apps.length} apps, ${packages.length} packages)',
   );
+  if (gaps.isNotEmpty) {
+    stdout.writeln('Open library gaps (${gaps.length}):');
+    gaps.forEach(stdout.writeln);
+  }
 }
