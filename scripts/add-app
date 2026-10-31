@@ -1,0 +1,106 @@
+#!/bin/bash
+# Adds an app to the workspace, copied from apps/mobile without its features.
+#
+#   scripts/add-app <name>
+#
+# Package name = <name>. Android applicationId = <mobile applicationId>.<name>,
+# iOS bundle id = <mobile bundle id>.<name in camelCase>.
+set -euo pipefail
+
+[ $# -eq 1 ] || { echo "usage: scripts/add-app <name>" >&2; exit 2; }
+NAME="$1"
+if ! [[ "$NAME" =~ ^[a-z][a-z0-9_]*$ ]] || [[ "$NAME" == *__* ]] || [[ "$NAME" == *_ ]]; then
+  echo "error: <name> must be a valid Dart package name (lowercase letters, digits, underscores)" >&2
+  exit 2
+fi
+case " abstract as assert async await break case catch class const continue covariant default deferred do dynamic else enum export extends extension external factory false final finally for get if implements import in interface is late library mixin new null of on operator part required rethrow return sealed set show static super switch sync this throw true try typedef var void when while with yield test " in
+  *" $NAME "*) echo "error: <name> must not be a reserved word" >&2; exit 2 ;;
+esac
+
+cd "$(dirname "$0")/.."
+SRC="apps/mobile"
+DST="apps/$NAME"
+[ -d "$SRC" ] || { echo "error: $SRC not found" >&2; exit 1; }
+if [ -e "$DST" ] || [ -d "packages/$NAME" ] || [ "$NAME" = "app_ui" ] || [ "$NAME" = "app_shared" ]; then
+  echo "error: $NAME already exists in the workspace" >&2
+  exit 1
+fi
+
+sedi() { local e="$1"; shift; sed -i.bak -e "$e" "$@"; for f in "$@"; do rm -f "$f.bak"; done; }
+
+# Identity of the mobile app, read from its platform files.
+OLD_ANDROID_ID="$(sed -n 's/.*applicationId = "\(.*\)".*/\1/p' $SRC/android/app/build.gradle.kts | head -1)"
+OLD_IOS_ID="$(sed -n 's/.*PRODUCT_BUNDLE_IDENTIFIER = \([A-Za-z0-9.]*\);/\1/p' $SRC/ios/Runner.xcodeproj/project.pbxproj | head -1)"
+OLD_TITLE="$(sed -n 's/.*"appTitle": "\(.*\)".*/\1/p' $SRC/lib/l10n/app_en.arb | head -1)"
+[ -n "$OLD_ANDROID_ID" ] && [ -n "$OLD_IOS_ID" ] && [ -n "$OLD_TITLE" ] || { echo "error: cannot read mobile identity" >&2; exit 1; }
+
+TITLE=""
+IOS_SUFFIX=""
+first=1
+IFS='_' read -r -a words <<< "$NAME"
+for w in "${words[@]}"; do
+  [ -n "$w" ] || continue
+  cap="$(printf '%s' "${w:0:1}" | tr '[:lower:]' '[:upper:]')${w:1}"
+  TITLE="${TITLE:+$TITLE }$cap"
+  if [ $first -eq 1 ]; then IOS_SUFFIX="$w"; first=0; else IOS_SUFFIX="$IOS_SUFFIX$cap"; fi
+done
+NEW_ANDROID_ID="$OLD_ANDROID_ID.$NAME"
+NEW_IOS_ID="$OLD_IOS_ID.$IOS_SUFFIX"
+
+# Copy the skeleton without features, build output and the lockfile.
+mkdir -p "$DST"
+(cd "$SRC" && tar -cf - --exclude=./build --exclude=./.dart_tool --exclude=./lib/features --exclude=./pubspec.lock --exclude=Pods .) | (cd "$DST" && tar -xf -)
+
+# Dart package
+sedi "s/^name: mobile\$/name: $NAME/" $DST/pubspec.yaml
+find "$DST/lib" "$DST/test" "$DST/integration_test" -name '*.dart' -print0 | xargs -0 sed -i.bak "s#package:mobile/#package:$NAME/#g"
+find "$DST" -name '*.bak' -delete
+
+# The home feature does not exist here: route / shows a welcome page instead.
+R="$DST/lib/app/router.dart"
+sedi "/features\\/home\\/presentation\\/home_page.dart/d" $R
+sedi "s/const _Framed(child: HomePage())/const _Framed(child: _Welcome())/" $R
+cat >> $R <<'EOF'
+
+class _Welcome extends StatelessWidget {
+  const _Welcome();
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    return Center(
+      child: Text(l10n.homeTitle, style: Theme.of(context).textTheme.headlineMedium),
+    );
+  }
+}
+EOF
+T="$DST/integration_test/app_test.dart"
+sedi "/features\\/home\\/presentation\\/home_page.dart/d" $T
+sedi "s/HomePage/Scaffold/g" $T
+
+# Titles
+sedi "s/\"appTitle\": \"[^\"]*\"/\"appTitle\": \"$TITLE\"/" $DST/lib/l10n/*.arb
+sedi "s/\\(String get appTitle => '\\)[^']*'/\\1$TITLE'/" $DST/lib/l10n/app_localizations_*.dart
+sedi "s/'$OLD_TITLE'/'$TITLE'/g" $DST/lib/l10n/app_localizations.dart
+sedi "s/$OLD_TITLE/$TITLE/g" $DST/android/app/src/main/AndroidManifest.xml $DST/ios/Runner/Info.plist $DST/web/manifest.json $DST/web/index.html
+
+# Android
+OLD_PATH="$DST/android/app/src/main/kotlin/$(echo "$OLD_ANDROID_ID" | tr . /)"
+NEW_PATH="$DST/android/app/src/main/kotlin/$(echo "$NEW_ANDROID_ID" | tr . /)"
+mkdir -p "$NEW_PATH"
+mv "$OLD_PATH/MainActivity.kt" "$NEW_PATH/MainActivity.kt"
+rmdir -p "$OLD_PATH" 2>/dev/null || true
+sedi "s/^package .*/package $NEW_ANDROID_ID/" "$NEW_PATH/MainActivity.kt"
+sedi "s/\"$OLD_ANDROID_ID\"/\"$NEW_ANDROID_ID\"/" $DST/android/app/build.gradle.kts
+
+# iOS (also matches the .RunnerTests ids)
+sedi "s/$OLD_IOS_ID/$NEW_IOS_ID/g" $DST/ios/Runner.xcodeproj/project.pbxproj
+
+# Register in the workspace, right after apps/mobile.
+awk -v line="  - apps/$NAME" '{ print } /^  - apps\/mobile$/ { print line }' pubspec.yaml > pubspec.yaml.new
+mv pubspec.yaml.new pubspec.yaml
+
+if command -v fvm >/dev/null 2>&1; then fvm flutter pub get; else flutter pub get; fi
+if command -v fvm >/dev/null 2>&1; then fvm dart format "$DST" >/dev/null; else dart format "$DST" >/dev/null; fi
+
+echo "Added $DST ($NEW_ANDROID_ID). Run it with: make dev APP=$NAME"

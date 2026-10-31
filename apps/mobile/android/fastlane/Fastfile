@@ -1,0 +1,89 @@
+# Android delivery to the Play internal testing track (see docs/release.md).
+#
+# Same lane names and `env:` argument as the iOS Fastfile; the version code comes from the store.
+# The release keystore is read by Gradle from android/key.properties (see app/build.gradle.kts).
+# Credentials come from the environment only; nothing secret is written here.
+
+require_relative "../../fastlane/slack"
+
+default_platform(:android)
+
+ENVS = %w[dev prod].freeze
+LANES_NOTIFIED = %i[build beta].freeze
+
+before_all do |lane, options|
+  next unless LANES_NOTIFIED.include?(lane)
+
+  SlackNotify.started("Android", lane, resolve_env(options))
+end
+
+after_all do |lane, options|
+  next unless LANES_NOTIFIED.include?(lane)
+
+  SlackNotify.succeeded("Android", lane, resolve_env(options))
+end
+
+error do |lane, exception, options|
+  next unless LANES_NOTIFIED.include?(lane)
+
+  SlackNotify.failed("Android", lane, resolve_env(options), exception.message)
+end
+
+platform :android do
+  desc "Build a release bundle without uploading it. `env:dev` (default) or `env:prod`"
+  lane :build do |options|
+    bundle_release(next_version_code)
+  end
+
+  desc "Build and upload to Play internal testing. `env:dev` (default) or `env:prod`"
+  lane :beta do |options|
+    bundle_release(next_version_code)
+    upload_to_play_store(
+      track: "internal",
+      aab: aab_path,
+      skip_upload_apk: true,
+      **play_credentials,
+      # This lane ships a binary, not a store listing.
+      skip_upload_metadata: true,
+      skip_upload_images: true,
+      skip_upload_screenshots: true,
+    )
+  end
+end
+
+# Defaults to dev: the environment where a mistaken run costs least.
+def resolve_env(options)
+  name = (options && options[:env] || "dev").to_s
+  ENVS.include?(name) ? name : UI.user_error!("Unknown env '#{name}'. Use one of: #{ENVS.join(', ')}")
+end
+
+def app_dir
+  File.expand_path("../..", __dir__)
+end
+
+def aab_path
+  File.join(app_dir, "build", "app", "outputs", "bundle", "release", "app-release.aab")
+end
+
+# Google credentials: the path of a service account JSON key file. When unset, supply falls back to
+# Application Default Credentials.
+def play_credentials
+  path = ENV["PLAY_JSON_KEY_PATH"].to_s
+  path.empty? ? {} : { json_key: File.absolute_path(path) }
+end
+
+# The store decides the next version code, so two machines can ship without coordinating.
+def next_version_code
+  codes = google_play_track_version_codes(
+    package_name: CredentialsManager::AppfileConfig.try_fetch_value(:package_name),
+    track: "internal",
+    **play_credentials,
+  )
+  (Array(codes).max || 0) + 1
+end
+
+def bundle_release(version_code)
+  flutter = ENV.fetch("FLUTTER", "flutter")
+  defines = ENV.fetch("DEFINES", "")
+  sh("cd #{app_dir} && #{flutter} build appbundle --release --build-number #{version_code} #{defines}")
+end

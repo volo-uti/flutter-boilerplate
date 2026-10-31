@@ -1,0 +1,27 @@
+name: Feature request
+description: Suggest a change or an addition to the template.
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem does this solve?
+      description: Describe the situation you ran into, not only the solution you have in mind.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed change
+      description: What should the template do differently?
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Other approaches, including leaving it for projects to add on demand.
+  - type: markdown
+    attributes:
+      value: |
+        The template stays minimal on purpose: things that only some projects need are added when first needed, not shipped by default.

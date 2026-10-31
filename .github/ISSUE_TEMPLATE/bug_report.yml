@@ -1,0 +1,39 @@
+name: Bug report
+description: Something in the template does not work as documented.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report. Please do not use this form for security problems; see [the security policy](https://github.com/volo-uti/flutter-boilerplate/security/policy).
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: What did you do, what did you expect and what happened instead?
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      description: Commands you ran, starting from a fresh clone if possible.
+      placeholder: |
+        1. git clone ...
+        2. scripts/init --name my_app --org com.mycompany
+        3. make check
+    validations:
+      required: true
+  - type: textarea
+    id: output
+    attributes:
+      label: Output
+      description: Relevant log or error output.
+      render: shell
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      description: Operating system, FVM version and the output of `fvm flutter --version`.
+    validations:
+      required: true

@@ -1,0 +1,16 @@
+{
+  "@@locale": "en",
+  "appTitle": "Flutter Boilerplate",
+  "homeTitle": "Hello, world",
+  "homeBody": "Edit lib/features/home to get started.",
+  "toggleTheme": "Toggle theme",
+  "switchLanguage": "Switch language",
+  "languageEnglish": "English",
+  "languageKorean": "Korean",
+  "notFoundTitle": "Page not found",
+  "notFoundBody": "No route matches {path}.",
+  "@notFoundBody": {
+    "placeholders": { "path": { "type": "String" } }
+  },
+  "goHome": "Go home"
+}

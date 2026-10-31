@@ -1,0 +1,141 @@
+#!/bin/bash
+# Turns this template into your project. Run once from a fresh clone.
+#
+#   scripts/init --name my_app --org com.mycompany [--nested]
+#
+# Renames the workspace and the identity of apps/mobile (bundle ids, titles),
+# removes the template's own community files (license, contributing guide, code
+# of conduct, security policy, principles, issue and pull request templates) and
+# drops the "Starting a project" section of AGENTS.md.
+# Package names (mobile, app_ui, app_shared) and imports are not renamed.
+#
+# --nested: the template lives in <product>/app/ of a larger repo. No git repo
+# is created; CI and git hooks are moved up to the parent repo.
+set -euo pipefail
+
+usage() {
+  echo "usage: scripts/init --name <dart_package_name> --org <reverse.domain> [--nested]" >&2
+  exit 2
+}
+
+NAME=""
+ORG=""
+NESTED=0
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --name) [ $# -ge 2 ] || usage; NAME="$2"; shift 2 ;;
+    --org) [ $# -ge 2 ] || usage; ORG="$2"; shift 2 ;;
+    --nested) NESTED=1; shift ;;
+    *) usage ;;
+  esac
+done
+
+[ -n "$ORG" ] || { echo "error: --org is required" >&2; usage; }
+[ -n "$NAME" ] || { echo "error: --name is required" >&2; usage; }
+if ! [[ "$NAME" =~ ^[a-z][a-z0-9_]*$ ]] || [[ "$NAME" == *__* ]] || [[ "$NAME" == *_ ]]; then
+  echo "error: --name must be a valid Dart package name (lowercase letters, digits, underscores; starts with a letter)" >&2
+  exit 2
+fi
+case " abstract as assert async await break case catch class const continue covariant default deferred do dynamic else enum export extends extension external factory false final finally for get if implements import in interface is late library mixin new null of on operator part required rethrow return sealed set show static super switch sync this throw true try typedef var void when while with yield test " in
+  *" $NAME "*) echo "error: --name must not be a reserved word or 'test'" >&2; exit 2 ;;
+esac
+if ! [[ "$ORG" =~ ^[a-z][a-z0-9]*(\.[a-z][a-z0-9_]*)+$ ]]; then
+  echo "error: --org must be a reverse domain such as com.mycompany" >&2
+  exit 2
+fi
+
+cd "$(dirname "$0")/.."
+ROOT="$(pwd)"
+DIR="$(basename "$ROOT")"
+
+OLD_NAME="flutter_boilerplate"
+OLD_ORG="com.example"
+OLD_TITLE="Flutter Boilerplate"
+OLD_IOS_ID="com.example.flutterBoilerplate"
+
+# my_app -> My App ; my_app -> myApp
+TITLE=""
+IOS_SUFFIX=""
+first=1
+IFS='_' read -r -a words <<< "$NAME"
+for w in "${words[@]}"; do
+  [ -n "$w" ] || continue
+  cap="$(printf '%s' "${w:0:1}" | tr '[:lower:]' '[:upper:]')${w:1}"
+  TITLE="${TITLE:+$TITLE }$cap"
+  if [ $first -eq 1 ]; then IOS_SUFFIX="$w"; first=0; else IOS_SUFFIX="$IOS_SUFFIX$cap"; fi
+done
+IOS_ID="$ORG.$IOS_SUFFIX"
+APP_ID="$ORG.$NAME"
+
+# Portable in-place sed (BSD and GNU): sedi <expr> <file>...
+sedi() { local e="$1"; shift; sed -i.bak -e "$e" "$@"; for f in "$@"; do rm -f "$f.bak"; done; }
+
+# Workspace root name (the mobile app and the packages keep their names)
+sedi "s/^name: $OLD_NAME\$/name: $NAME/" pubspec.yaml
+sedi "s/^description: .*/description: \"$TITLE workspace.\"/" pubspec.yaml
+
+# App title: ARB sources and the committed generated output (no generation step needed)
+M="apps/mobile"
+sedi "s/\"appTitle\": \"[^\"]*\"/\"appTitle\": \"$TITLE\"/" $M/lib/l10n/*.arb
+sedi "s/\(String get appTitle => '\)[^']*'/\1$TITLE'/" $M/lib/l10n/app_localizations_*.dart
+sedi "s/$OLD_TITLE/$TITLE/g" $M/lib/l10n/app_localizations.dart AGENTS.md
+
+# Android
+OLD_PATH="$M/android/app/src/main/kotlin/$(echo "$OLD_ORG.$OLD_NAME" | tr . /)"
+NEW_PATH="$M/android/app/src/main/kotlin/$(echo "$APP_ID" | tr . /)"
+mkdir -p "$NEW_PATH"
+mv "$OLD_PATH/MainActivity.kt" "$NEW_PATH/MainActivity.kt"
+rmdir -p "$OLD_PATH" 2>/dev/null || true
+sedi "s/^package .*/package $APP_ID/" "$NEW_PATH/MainActivity.kt"
+sedi "s/\"$OLD_ORG.$OLD_NAME\"/\"$APP_ID\"/" $M/android/app/build.gradle.kts
+sedi "s/$OLD_TITLE/$TITLE/" $M/android/app/src/main/AndroidManifest.xml
+
+# iOS
+sedi "s/$OLD_IOS_ID/$IOS_ID/g" $M/ios/Runner.xcodeproj/project.pbxproj
+sedi "s#<string>$OLD_TITLE</string>#<string>$TITLE</string>#" $M/ios/Runner/Info.plist
+
+# fastlane
+sedi "s/$OLD_IOS_ID/$IOS_ID/" $M/ios/fastlane/Appfile
+sedi "s/$OLD_ORG.$OLD_NAME/$APP_ID/" $M/android/fastlane/Appfile
+
+# Web
+sedi "s#$OLD_TITLE#$TITLE#g" $M/web/manifest.json $M/web/index.html
+
+# README
+cat > README.md <<EOF
+# $TITLE
+
+Flutter workspace (apps/mobile, packages/app_ui, packages/app_shared). See \`AGENTS.md\` for structure and rules.
+
+\`\`\`
+make setup   # install the pinned Flutter SDK and dependencies
+make dev     # run the app
+make check   # format, analyze, architecture, locales, tests
+\`\`\`
+EOF
+
+# AGENTS.md lists this script and explains how to start a project; neither applies afterwards.
+sedi 's#^\(scripts/ *\)init, #\1#' AGENTS.md
+awk '/^## Starting a project$/ { exit } /^$/ { blank++; next } { while (blank > 0) { print ""; blank-- } print }' AGENTS.md > AGENTS.md.new
+mv AGENTS.md.new AGENTS.md
+
+if [ $NESTED -eq 1 ]; then
+  rm -rf .git
+  # Every hook command runs from the parent repo root, scoped to this folder; command names
+  # get the folder as a prefix so they do not collide with other parts' hooks.
+  awk -v dir="$DIR" '/^    [a-z_-]+:$/ { sub(/^    /, "    " dir "-"); print; print "      root: \"" dir "/\""; next } { print }' lefthook.yml > lefthook.yml.new
+  mv lefthook.yml.new lefthook.yml
+else
+  rm -rf .git
+fi
+
+# The template's community files describe the template, not your project.
+# Kept: .editorconfig, .gitattributes, .gitignore.
+rm -f LICENSE CONTRIBUTING.md CODE_OF_CONDUCT.md SECURITY.md PRINCIPLES.md .github/PULL_REQUEST_TEMPLATE.md scripts/init
+rm -rf .github/ISSUE_TEMPLATE
+rmdir .github 2>/dev/null || true
+if [ $NESTED -eq 0 ]; then
+  git init -q -b main
+fi
+
+echo "Initialized $TITLE ($APP_ID). Next: make setup && make check"

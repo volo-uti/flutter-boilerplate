@@ -1,0 +1,19 @@
+name: app_ui
+description: "Shared Material 3 theme and atomic-design widgets. Takes labels as parameters; no l10n."
+publish_to: none
+version: 0.1.0
+resolution: workspace
+
+environment:
+  sdk: ^3.13.7
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+
+flutter:
+  uses-material-design: true

@@ -1,0 +1,6 @@
+#!/bin/bash
+# Reports newer Flutter / dependency versions. See .agents/skills/update-deps.
+set -euo pipefail
+cd "$(dirname "$0")/.."
+if command -v fvm >/dev/null 2>&1; then DART="fvm dart"; else DART="dart"; fi
+exec $DART run scripts/update_check.dart
