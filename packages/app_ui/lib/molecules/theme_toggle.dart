@@ -1,4 +1,5 @@
 import 'package:app_ui/atoms/app_icon_button.dart';
+// ignore: deprecated_member_use
 import 'package:flutter/material.dart';
 
 /// Button that flips between light and dark. [tooltip] is the localized label.

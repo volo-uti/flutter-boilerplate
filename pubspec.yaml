@@ -3,7 +3,7 @@ description: "Flutter boilerplate workspace: Riverpod, go_router, gen-l10n, Mate
 publish_to: none
 
 environment:
-  sdk: ^3.13.7
+  sdk: ^3.14.0
 
 workspace:
   - apps/mobile

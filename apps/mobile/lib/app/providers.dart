@@ -1,4 +1,5 @@
 import 'package:dio/dio.dart';
+// ignore: deprecated_member_use
 import 'package:flutter/material.dart';
 import 'package:mobile/app/app_env.dart';
 import 'package:app_shared/data/http_client.dart';

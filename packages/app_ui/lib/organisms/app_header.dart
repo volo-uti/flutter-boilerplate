@@ -1,5 +1,6 @@
 import 'package:app_ui/molecules/locale_switcher.dart';
 import 'package:app_ui/molecules/theme_toggle.dart';
+// ignore: deprecated_member_use
 import 'package:flutter/material.dart';
 
 /// Top bar with a title, theme toggle and locale switcher.

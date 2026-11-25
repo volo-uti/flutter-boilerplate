@@ -1,3 +1,4 @@
+// ignore: deprecated_member_use
 import 'package:flutter/material.dart';
 import 'package:mobile/app/providers.dart';
 import 'package:mobile/app/router.dart';

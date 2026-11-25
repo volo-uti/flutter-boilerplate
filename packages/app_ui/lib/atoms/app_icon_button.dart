@@ -1,3 +1,4 @@
+// ignore: deprecated_member_use
 import 'package:flutter/material.dart';
 
 /// Icon button that always carries a tooltip, which doubles as its semantic label.

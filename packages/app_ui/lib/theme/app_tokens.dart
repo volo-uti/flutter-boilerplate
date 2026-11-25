@@ -1,3 +1,4 @@
+// ignore: deprecated_member_use
 import 'package:flutter/material.dart';
 
 /// App-specific design tokens, available via `Theme.of(context).extension<AppTokens>()`.
